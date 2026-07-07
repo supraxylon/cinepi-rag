@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cinepi-rag-starter"
+version = "0.1.0"
+description = "Local-first RAG starter for CinePi/Cinemate documentation and troubleshooting."
+requires-python = ">=3.10"
+dependencies = [
+  "PyYAML>=6.0.1",
+  "requests>=2.32.0",
+  "python-dotenv>=1.0.1"
+]
+
+[project.scripts]
+cinepi-rag = "cinepi_rag.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

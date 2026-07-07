@@ -1,0 +1,2 @@
+{"project":"cinemate","title":"cinepi.local only works on phone","approved_for_kb":true,"messages":[{"author":"user","content":"cinepi.local opens on my iPhone but not on my Windows laptop."},{"author":"maintainer","content":"That usually points to mDNS/Bonjour support. Try the Pi IP address, check that both devices are on the same network, and verify avahi-daemon is running."}]}
+{"project":"cinemate","title":"Private thread that should not ingest","approved_for_kb":false,"messages":[{"author":"user","content":"Do not use this message in the KB."}]}
