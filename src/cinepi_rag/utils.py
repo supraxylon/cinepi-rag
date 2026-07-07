@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+from urllib.parse import urlsplit, urlunsplit
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,15 @@ def redacted(text: str) -> str:
     for pattern, replacement in SENSITIVE_PATTERNS:
         text = pattern.sub(replacement, text)
     return text
+
+
+def clean_url(url: str) -> str:
+    if not url:
+        return ""
+    parsed = urlsplit(url)
+    if parsed.netloc.endswith("discordapp.com") or parsed.netloc.endswith("discordapp.net"):
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+    return redacted(url)
 
 
 def stable_id(*parts: str) -> str:

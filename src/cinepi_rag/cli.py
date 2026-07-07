@@ -6,7 +6,7 @@ from pathlib import Path
 from .config import load_config
 from .db import Database
 from .extraction import extract_knowledge, generate_docs
-from .ingestion import ingest_discord_jsonl, ingest_docs
+from .ingestion import ingest_discord_export, ingest_discord_jsonl, ingest_docs
 from .llm_gateway import LLMGateway
 from .rag import answer_question
 from .utils import short
@@ -27,6 +27,14 @@ def build_parser() -> argparse.ArgumentParser:
     discord = sub.add_parser("ingest-discord", help="Ingest opt-in Discord JSONL threads")
     discord.add_argument("path")
     discord.add_argument("--project", default="cinemate")
+
+    discord_export = sub.add_parser("ingest-discord-export", help="Ingest DiscordChatExporter-style channel JSON files")
+    discord_export.add_argument("path", help="A Discord export .json file or folder of .json files")
+    discord_export.add_argument("--project", default="cinepi")
+    discord_export.add_argument("--preserve-author-names", action="store_true", help="Keep all exported author names instead of pseudonymizing normal users")
+    discord_export.add_argument("--include-bots", action="store_true", help="Include bot-authored messages")
+    discord_export.add_argument("--max-chars", type=int, default=5000, help="Approximate maximum characters per chunk")
+    discord_export.add_argument("--max-messages", type=int, default=40, help="Maximum messages per chunk")
 
     search = sub.add_parser("search", help="Search indexed chunks")
     search.add_argument("query")
@@ -66,6 +74,17 @@ def main() -> None:
     elif args.command == "ingest-discord":
         count = ingest_discord_jsonl(db, args.path, default_project=args.project)
         print(f"Ingested {count} approved Discord chunks from {Path(args.path)}")
+    elif args.command == "ingest-discord-export":
+        count = ingest_discord_export(
+            db,
+            args.path,
+            default_project=args.project,
+            preserve_author_names=args.preserve_author_names,
+            include_bots=args.include_bots,
+            max_chars=args.max_chars,
+            max_messages=args.max_messages,
+        )
+        print(f"Ingested {count} raw Discord export chunks from {Path(args.path)}")
     elif args.command == "search":
         for i, result in enumerate(db.search(args.query, top_k), start=1):
             print(f"\n[{i}] {result['title']}")

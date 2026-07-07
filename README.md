@@ -7,6 +7,7 @@ This repo is intentionally small and readable. The first working version uses:
 - **SQLite + FTS5** for searchable chunks
 - **Markdown/TXT ingestion** for official docs and notes
 - **Opt-in Discord JSONL ingestion** for solved/support threads
+- **DiscordChatExporter-style channel JSON ingestion** for raw exports staged for extraction/review
 - **Provider-agnostic LLM gateway** for local or hosted models
 - **Offline extractive fallback** so the project works before an LLM is configured
 - **Roadmap-first structure** so vector search, review UI, and Discord bot features can be added incrementally
@@ -34,6 +35,8 @@ cp config.example.yaml config.yaml
 cinepi-rag init-db
 cinepi-rag ingest-docs data/sources
 cinepi-rag ingest-discord data/discord_intake/example_threads.jsonl
+# Or ingest DiscordChatExporter-style channel JSON files
+cinepi-rag ingest-discord-export /path/to/discord_exports --project cinepi
 cinepi-rag search "cinepi.local not resolving"
 cinepi-rag ask "Why does cinepi.local work on some devices but not others?"
 ```
@@ -65,7 +68,7 @@ The LLM gateway supports OpenAI-compatible APIs, which means the same provider c
 Start Ollama and pull a model:
 
 ```bash
-ollama pull qwen2.5:14b-instruct
+ollama pull qwen3:30b-a3b-instruct-2507-q4_K_M
 ```
 
 Edit `config.yaml`:
@@ -78,7 +81,7 @@ llm:
       type: openai_compatible
       base_url: http://localhost:11434/v1
       api_key: ollama
-      model: qwen2.5:14b-instruct
+      model: qwen3:30b-a3b-instruct-2507-q4_K_M
 ```
 
 Then run:
@@ -99,7 +102,7 @@ llm:
       type: openai_compatible
       base_url: http://localhost:8000/v1
       api_key: local-dev-key
-      model: Qwen/Qwen2.5-32B-Instruct
+      model: Qwen/Qwen3-30B-A3B-Instruct-2507
 ```
 
 ### Hosted OpenAI-compatible example
@@ -114,6 +117,39 @@ llm:
       api_key_env: OPENAI_API_KEY
       model: gpt-4.1-mini
 ```
+
+## Discord channel exports
+
+The initial starter repo expected approved JSONL threads. Your actual export shape is different: each `.json` file is a full Discord channel export with top-level `guild`, `channel`, `exportedAt`, `messageCount`, and a `messages` array. The repo now supports that format directly.
+
+```bash
+cinepi-rag ingest-discord-export /path/to/discord_exports --project cinepi
+```
+
+Useful options:
+
+```bash
+# Keep all author names instead of pseudonymizing normal users.
+cinepi-rag ingest-discord-export /path/to/discord_exports --preserve-author-names
+
+# Include bot messages.
+cinepi-rag ingest-discord-export /path/to/discord_exports --include-bots
+
+# Tune chunk size.
+cinepi-rag ingest-discord-export /path/to/discord_exports --max-chars 5000 --max-messages 40
+```
+
+The ingestor:
+
+- reads one JSON file at a time;
+- stores channel/guild/export metadata on each source and chunk;
+- marks these chunks as `review_status: raw` in metadata;
+- pseudonymizes normal users by default while preserving Admin/Moderator names;
+- keeps reply context when `reference.messageId` points to another message in the same export;
+- includes attachment filenames, embed titles, embed descriptions, and forwarded message content;
+- strips query strings from Discord CDN URLs so expiring signed URL parameters are not indexed.
+
+The older `ingest-discord` command still exists for intentionally curated JSONL threads.
 
 ## Opt-in Discord intake format
 
@@ -137,6 +173,9 @@ cinepi-rag ingest-docs data/sources
 # Ingest opt-in Discord JSONL threads
 cinepi-rag ingest-discord data/discord_intake/example_threads.jsonl
 
+# Ingest DiscordChatExporter-style channel JSON files
+cinepi-rag ingest-discord-export /path/to/discord_exports --project cinepi
+
 # Search chunks
 cinepi-rag search "ssd not mounted"
 
@@ -158,7 +197,8 @@ src/cinepi_rag/
   config.py           # YAML/env config loading
   db.py               # SQLite schema and persistence
   chunking.py         # readable markdown/text chunking
-  ingestion.py        # docs + opt-in Discord ingestion
+  ingestion.py        # docs + Discord ingestion
+  discord_export.py   # Discord channel export normalization
   llm_gateway.py      # local/hosted provider abstraction
   rag.py              # retrieval + answer generation
   extraction.py       # knowledge-item extraction and doc generation

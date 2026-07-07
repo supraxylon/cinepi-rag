@@ -5,6 +5,7 @@ from typing import Any
 
 from .chunking import chunk_markdown, chunk_plain_text
 from .db import Database
+from .discord_export import chunk_discord_export, discord_export_files, export_metadata, export_title, load_discord_export
 from .utils import read_jsonl, read_text, redacted
 
 TEXT_EXTENSIONS = {".md", ".markdown", ".txt", ".rst"}
@@ -48,5 +49,27 @@ def ingest_discord_jsonl(db: Database, path: str | Path, default_project: str = 
         source_id = db.add_source("discord_intake", project, title, str(path), {"row": index, "thread_id": thread.get("thread_id")})
         for chunk in chunk_plain_text(title, text, max_chars=3200):
             db.add_chunk(source_id, chunk.title, chunk.text, chunk.heading_path, {"thread_title": title})
+            added += 1
+    return added
+
+
+def ingest_discord_export(
+    db: Database,
+    path: str | Path,
+    default_project: str = "cinepi",
+    preserve_author_names: bool = False,
+    include_bots: bool = False,
+    max_chars: int = 5000,
+    max_messages: int = 40,
+) -> int:
+    added = 0
+    for export_path in discord_export_files(path):
+        data = load_discord_export(export_path)
+        title = export_title(data)
+        metadata = export_metadata(data, export_path)
+        source_id = db.add_source("discord_export_raw", default_project, title, str(export_path), metadata)
+        for chunk in chunk_discord_export(data, preserve_author_names, include_bots, max_chars, max_messages):
+            chunk_metadata = metadata | (chunk.metadata or {})
+            db.add_chunk(source_id, chunk.title, chunk.text, chunk.heading_path, chunk_metadata)
             added += 1
     return added

@@ -38,6 +38,10 @@ Instead of generating one giant summary document, the pipeline extracts structur
 - SQLite FTS5 search for fast local retrieval.
 - Markdown/TXT source ingestion.
 - Opt-in Discord JSONL thread ingestion.
+- DiscordChatExporter-style channel JSON ingestion for raw channel exports.
+- Reply-aware Discord export chunking using `reference.messageId` when available.
+- Attachment/embed/forwarded-message normalization for Discord exports.
+- Default Discord author pseudonymization, while preserving Admin/Moderator names.
 - Basic redaction for sensitive-looking values.
 - Source-aware chunking for Markdown headings and long text.
 - LLM gateway for local or hosted OpenAI-compatible providers.
@@ -138,22 +142,24 @@ Remaining work:
 - Confirm the citation format is useful.
 - Add a few hand-written troubleshooting examples.
 
-### Milestone 2 — Opt-in Discord knowledge intake
+### Milestone 2 — Discord knowledge intake
 
-Status: **Partially started**
+Status: **Started with real export support**
 
 Goals:
 
 - Accept JSONL exports of approved Discord threads.
-- Redact sensitive data.
-- Chunk thread conversations in a useful way.
+- Accept DiscordChatExporter-style channel JSON files with top-level `guild`, `channel`, and `messages`.
+- Redact sensitive data and strip expiring Discord CDN query strings.
+- Chunk channel conversations in a useful way.
+- Preserve reply context, attachments, embeds, pins, and forwarded messages where useful.
 - Extract troubleshooting records.
 
 Remaining work:
 
-- Decide the exact opt-in workflow in Discord.
-- Build a small exporter or bot command for marked threads.
-- Add maintainer/source metadata.
+- Decide whether raw export chunks should be searchable directly or only used as extraction input.
+- Add a review-status filter so normal `ask` prefers official docs and approved/generated docs over raw chat.
+- Build a small exporter or bot command for future marked threads.
 - Add duplicate detection.
 
 ### Milestone 3 — Review and canonical docs
@@ -248,3 +254,16 @@ A useful v1 should be able to:
 - Run locally with Ollama or vLLM.
 - Fall back to hosted models by config.
 - Generate draft Markdown troubleshooting docs from reviewed knowledge items.
+
+
+## Update after inspecting actual Discord export structure
+
+The uploaded structure summaries show the export is not one JSONL row per solved thread. It is 13 channel-level JSON files with top-level `channel`, `guild`, `exportedAt`, `messageCount`, and `messages`. Across those files there are 17,445 message objects, with attachments, embeds, replies/references, reactions, forwarded messages, pins, mentions, stickers, and author role metadata. The repo now has a dedicated `discord_export.py` normalizer and an `ingest-discord-export` CLI command for that shape.
+
+Near-term repo changes still needed after this update:
+
+1. Add retrieval filtering so raw Discord chunks can be excluded by default from user-facing answers.
+2. Add a command that runs extraction over raw Discord chunks and writes candidate knowledge items for review.
+3. Add a lightweight review UI or markdown review queue.
+4. Add topic/channel-aware chunking rules, especially for `faq`, `INFORMATION`, hardware channels, and troubleshooting-heavy channels.
+5. Add duplicate/near-duplicate merging before generated docs are produced.

@@ -9,6 +9,7 @@ class Chunk:
     title: str
     text: str
     heading_path: str
+    metadata: dict | None = None
 
 
 def chunk_markdown(title: str, text: str, max_chars: int = 2800) -> list[Chunk]:
