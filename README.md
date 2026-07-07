@@ -27,6 +27,10 @@ Official docs + opt-in solved threads
 
 ## Quick start
 
+```powershell
+$DATSSOURCE_DOCS="C:\Users\magna\Documents\projects\cinepi\discord_to_docs_llm\cinepi_knowledge_sources"
+$DATSSOURCE_DISC="C:\Users\magna\Documents\projects\cinepi\discord_to_docs_llm\server_messages"
+```
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
@@ -34,10 +38,10 @@ pip install -r requirements.txt
 pip install -e .
 cp config.example.yaml config.yaml
 cinepi-rag init-db
-cinepi-rag ingest-docs data/sources
-cinepi-rag ingest-discord data/discord_intake/example_threads.jsonl
+cinepi-rag ingest-docs $DATSSOURCE_DOCS
+# cinepi-rag ingest-discord data/discord_intake/example_threads.jsonl
 # Or ingest DiscordChatExporter-style channel JSON files
-cinepi-rag ingest-discord-export /path/to/discord_exports --project cinepi
+cinepi-rag ingest-discord-export $DATSSOURCE_DISC --project cinepi
 cinepi-rag search "cinepi.local not resolving"
 cinepi-rag ask "Why does cinepi.local work on some devices but not others?"
 ```
@@ -193,6 +197,61 @@ This project expects exported or bot-submitted JSONL where each line is a review
 ```
 
 Records with `approved_for_kb: false` are skipped.
+
+## Discord slash-command bot
+
+The repo includes a minimal Discord bot that exposes the same local RAG system through slash commands. It does not need the Message Content privileged intent because users interact with it through application commands rather than normal message scraping.
+
+### 1. Install dependencies
+
+```bash
+pip install -r requirements.txt
+pip install -e .
+```
+
+### 2. Configure your token
+
+Put your token in `.env` rather than in `config.yaml`:
+
+```bash
+DISCORD_BOT_TOKEN=your-bot-token-here
+# Optional, recommended while testing so slash commands sync to one server quickly.
+DISCORD_GUILD_ID=your-test-server-id
+```
+
+### 3. Configure bot behavior
+
+```yaml
+discord_bot:
+  token_env: DISCORD_BOT_TOKEN
+  guild_id_env: DISCORD_GUILD_ID
+  guild_id: null
+  # Empty means all channels. Add numeric channel IDs to restrict where /ask can run.
+  allowed_channel_ids: []
+  public_by_default: true
+  top_k: 6
+```
+
+### 4. Run the bot
+
+Make sure you have already initialized and ingested data:
+
+```bash
+cinepi-rag init-db
+cinepi-rag ingest-docs data/sources
+cinepi-rag ingest-discord-export /path/to/discord_exports --project cinepi
+cinepi-rag run-discord-bot
+```
+
+Available commands:
+
+```text
+/ask question:<your question> private:<true/false>
+/search query:<terms>
+/health
+```
+
+For the OAuth invite URL, use the Developer Portal URL generator with the `bot` and `applications.commands` scopes. For basic slash-command usage, the bot does not need permission to read all message content.
 
 ## Common commands
 

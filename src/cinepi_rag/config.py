@@ -28,6 +28,14 @@ DEFAULT_CONFIG = {
         "max_chars": 5000,
         "max_messages": 40,
     },
+    "discord_bot": {
+        "token_env": "DISCORD_BOT_TOKEN",
+        "guild_id_env": "DISCORD_GUILD_ID",
+        "guild_id": None,
+        "allowed_channel_ids": [],
+        "public_by_default": True,
+        "top_k": 6,
+    },
     "llm": {"default_provider": "offline", "providers": {"offline": {"type": "offline"}}},
 }
 
@@ -43,5 +51,6 @@ def load_config(path: str = "config.yaml") -> dict[str, Any]:
     config["retrieval"] = DEFAULT_CONFIG["retrieval"] | config.get("retrieval", {})
     config["discord"] = DEFAULT_CONFIG["discord"] | config.get("discord", {})
     config["discord_exports"] = DEFAULT_CONFIG["discord_exports"] | config.get("discord_exports", {})
+    config["discord_bot"] = DEFAULT_CONFIG["discord_bot"] | config.get("discord_bot", {})
     config["llm"] = DEFAULT_CONFIG["llm"] | config.get("llm", {})
     return config

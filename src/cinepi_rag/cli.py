@@ -9,6 +9,7 @@ from .extraction import extract_knowledge, generate_docs
 from .ingestion import ingest_discord_export, ingest_discord_jsonl, ingest_docs
 from .llm_gateway import LLMGateway
 from .rag import answer_question
+from .discord_bot import run_bot
 from .utils import short
 
 
@@ -52,6 +53,8 @@ def build_parser() -> argparse.ArgumentParser:
     gen = sub.add_parser("generate-docs", help="Generate Markdown docs from approved JSONL knowledge items")
     gen.add_argument("items_folder")
     gen.add_argument("output_folder")
+
+    sub.add_parser("run-discord-bot", help="Run the Discord slash-command bot")
     return parser
 
 
@@ -59,6 +62,10 @@ def main() -> None:
     args = build_parser().parse_args()
     config = load_config(args.config)
     db = Database(config["database"]["path"])
+
+    if args.command == "run-discord-bot":
+        run_bot(args.config)
+        return
 
     if args.command == "init-db":
         db.init(reset=args.reset)

@@ -1,0 +1,2 @@
+[console_scripts]
+cinepi-rag = cinepi_rag.cli:main

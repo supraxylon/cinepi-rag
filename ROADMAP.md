@@ -279,3 +279,14 @@ Remaining work:
 1. Add a review UI or CLI command to promote raw Discord chunks into approved knowledge items.
 2. Add source filtering so public bot answers can default to official/approved sources and only include raw Discord when requested.
 3. Add stale-source handling so newer official docs can override old maintainer chat messages.
+
+## Implemented: Discord slash-command bot
+
+The repo now includes a minimal live Discord bot entrypoint. It exposes `/ask`, `/search`, and `/health`, calls the same `answer_question()` path as the CLI, defers long-running interaction responses, splits long answers into Discord-safe chunks, and supports optional channel allow-listing. It uses slash commands so the bot does not need Message Content privileged intent for normal Q&A usage.
+
+Remaining bot work:
+
+- Add `/suggest-doc-fix` to capture community corrections into an intake file.
+- Add `/submit-solved-thread` after the community agrees on an opt-in workflow.
+- Add role-based permission checks for maintainer-only commands.
+- Add deployment docs for Windows Task Scheduler, systemd, and Docker.
