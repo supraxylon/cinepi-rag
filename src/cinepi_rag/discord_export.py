@@ -25,12 +25,40 @@ def load_discord_export(path: str | Path) -> dict[str, Any]:
     return data
 
 
-def author_label(author: dict[str, Any], preserve_names: bool = False) -> str:
-    name = author.get("nickname") or author.get("name") or "unknown"
-    roles = {role.get("name") for role in author.get("roles", []) if isinstance(role, dict)}
-    if preserve_names or roles.intersection(RELEVANT_AUTHOR_ROLES):
-        return redacted(str(name))
-    return f"user_{stable_id(str(author.get('id', name)))[:8]}"
+def author_names(author: dict[str, Any]) -> tuple[str, str]:
+    return str(author.get("name") or ""), str(author.get("nickname") or "")
+
+
+def author_roles(author: dict[str, Any]) -> list[str]:
+    return [str(role.get("name")) for role in author.get("roles", []) if isinstance(role, dict) and role.get("name")]
+
+
+def authority_for_author(author: dict[str, Any], discord_config: dict[str, Any] | None = None) -> tuple[float, str]:
+    discord_config = discord_config or {}
+    name, nickname = author_names(author)
+    names = {name.lower(), nickname.lower()} - {""}
+
+    for trusted in discord_config.get("trusted_authors", []) or []:
+        aliases = {str(alias).lower() for alias in trusted.get("aliases", [])}
+        if names.intersection(aliases):
+            return float(trusted.get("score", 1.0)), str(trusted.get("reason") or f"trusted author: {name or nickname}")
+
+    role_scores = discord_config.get("trusted_roles", {}) or {}
+    matched_roles = [role for role in author_roles(author) if role in role_scores]
+    if matched_roles:
+        best_role = max(matched_roles, key=lambda role: float(role_scores[role]))
+        return float(role_scores[best_role]), f"trusted role: {best_role}"
+
+    return 1.0, "normal author"
+
+
+def author_label(author: dict[str, Any], preserve_names: bool = False, discord_config: dict[str, Any] | None = None) -> str:
+    name, nickname = author_names(author)
+    display = nickname or name or "unknown"
+    score, _reason = authority_for_author(author, discord_config)
+    if preserve_names or score > 1.0 or set(author_roles(author)).intersection(RELEVANT_AUTHOR_ROLES):
+        return redacted(display)
+    return f"user_{stable_id(str(author.get('id') or display))[:8]}"
 
 
 def export_title(data: dict[str, Any]) -> str:
@@ -83,7 +111,7 @@ def embed_lines(embeds: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
-def forwarded_lines(message: dict[str, Any], preserve_names: bool) -> list[str]:
+def forwarded_lines(message: dict[str, Any]) -> list[str]:
     forwarded = message.get("forwardedMessage")
     if not isinstance(forwarded, dict):
         return []
@@ -94,8 +122,13 @@ def forwarded_lines(message: dict[str, Any], preserve_names: bool) -> list[str]:
     return lines
 
 
-def message_text(message: dict[str, Any], by_id: dict[str, dict[str, Any]], preserve_names: bool = False) -> str:
-    author = author_label(message.get("author", {}) or {}, preserve_names=preserve_names)
+def message_text(
+    message: dict[str, Any],
+    by_id: dict[str, dict[str, Any]],
+    preserve_names: bool = False,
+    discord_config: dict[str, Any] | None = None,
+) -> str:
+    author = author_label(message.get("author", {}) or {}, preserve_names, discord_config)
     timestamp = message.get("timestamp") or "unknown-time"
     tags = []
     if message.get("type") not in {None, "Default", "Reply"}:
@@ -109,14 +142,33 @@ def message_text(message: dict[str, Any], by_id: dict[str, dict[str, Any]], pres
     ref = message.get("reference") or {}
     parent = by_id.get(str(ref.get("messageId"))) if isinstance(ref, dict) else None
     if parent and parent.get("content"):
-        parent_author = author_label(parent.get("author", {}) or {}, preserve_names=preserve_names)
+        parent_author = author_label(parent.get("author", {}) or {}, preserve_names, discord_config)
         parent_text = redacted(str(parent.get("content", ""))).strip().replace("\n", " ")[:500]
         lines.append(f"  replies to {parent_author}: {parent_text}")
 
     lines.extend(attachment_lines(message.get("attachments", []) or []))
     lines.extend(embed_lines(message.get("embeds", []) or []))
-    lines.extend(forwarded_lines(message, preserve_names))
+    lines.extend(forwarded_lines(message))
     return "\n".join(line for line in lines if line.strip())
+
+
+def reaction_count(message: dict[str, Any]) -> int:
+    return sum(int(item.get("count") or 0) for item in message.get("reactions", []) or [] if isinstance(item, dict))
+
+
+def message_authority_metadata(message: dict[str, Any], discord_config: dict[str, Any] | None = None) -> dict[str, Any]:
+    author = message.get("author", {}) or {}
+    name, nickname = author_names(author)
+    score, reason = authority_for_author(author, discord_config)
+    return {
+        "authority_score": score,
+        "authority_reason": reason,
+        "author_name": name,
+        "author_nickname": nickname,
+        "author_roles": author_roles(author),
+        "is_pinned": bool(message.get("isPinned")),
+        "reaction_count": reaction_count(message),
+    }
 
 
 def chunk_discord_export(
@@ -125,35 +177,54 @@ def chunk_discord_export(
     include_bots: bool = False,
     max_chars: int = 5000,
     max_messages: int = 40,
+    discord_config: dict[str, Any] | None = None,
 ) -> list[Chunk]:
     messages = [msg for msg in data.get("messages", []) if isinstance(msg, dict)]
     by_id = {str(msg.get("id")): msg for msg in messages if msg.get("id")}
     title = export_title(data)
     chunks: list[Chunk] = []
     buffer: list[str] = []
+    stats: list[dict[str, Any]] = []
     start_ts = end_ts = ""
     start_id = end_id = ""
     part = 1
 
     def flush() -> None:
-        nonlocal buffer, start_ts, end_ts, start_id, end_id, part
+        nonlocal buffer, stats, start_ts, end_ts, start_id, end_id, part
         if not buffer:
             return
+        best = max(stats, key=lambda item: float(item["authority_score"]), default={"authority_score": 1.0, "authority_reason": "normal author"})
+        trusted = [s for s in stats if float(s["authority_score"]) > 1.0]
+        trusted_names = sorted({s.get("author_nickname") or s.get("author_name") for s in trusted if s.get("author_nickname") or s.get("author_name")})
         chunk_title = f"{title} — messages {part}"
         chunk_text = "\n\n".join(buffer).strip()
         chunks.append(Chunk(title=chunk_title, text=chunk_text, heading_path=f"{title} / {start_ts} to {end_ts}"))
-        chunks[-1].metadata = {"message_id_start": start_id, "message_id_end": end_id, "timestamp_start": start_ts, "timestamp_end": end_ts}
-        buffer, start_ts, end_ts, start_id, end_id, part = [], "", "", "", "", part + 1
+        chunks[-1].metadata = {
+            "message_id_start": start_id,
+            "message_id_end": end_id,
+            "timestamp_start": start_ts,
+            "timestamp_end": end_ts,
+            "chunk_message_count": len(stats),
+            "authority_score": float(best["authority_score"]),
+            "authority_reason": best["authority_reason"],
+            "trusted_author_count": len(trusted),
+            "trusted_authors": trusted_names,
+            "is_pinned": any(bool(s.get("is_pinned")) for s in stats),
+            "pinned_count": sum(1 for s in stats if s.get("is_pinned")),
+            "reaction_count": sum(int(s.get("reaction_count") or 0) for s in stats),
+        }
+        buffer, stats, start_ts, end_ts, start_id, end_id, part = [], [], "", "", "", "", part + 1
 
     for message in messages:
         if message.get("author", {}).get("isBot") and not include_bots:
             continue
-        text = message_text(message, by_id, preserve_names=preserve_author_names)
+        text = message_text(message, by_id, preserve_author_names, discord_config)
         if not text.strip() or text.strip().endswith(":"):
             continue
         if buffer and (sum(len(item) for item in buffer) + len(text) > max_chars or len(buffer) >= max_messages):
             flush()
         buffer.append(text)
+        stats.append(message_authority_metadata(message, discord_config))
         start_ts = start_ts or str(message.get("timestamp") or "")
         start_id = start_id or str(message.get("id") or "")
         end_ts = str(message.get("timestamp") or "")

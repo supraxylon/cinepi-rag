@@ -8,6 +8,7 @@ This repo is intentionally small and readable. The first working version uses:
 - **Markdown/TXT ingestion** for official docs and notes
 - **Opt-in Discord JSONL ingestion** for solved/support threads
 - **DiscordChatExporter-style channel JSON ingestion** for raw exports staged for extraction/review
+- **Trusted-author authority metadata and retrieval boosts** for maintainers like `cinepi`, `schoolpost`, and `Tiramisioux`
 - **Provider-agnostic LLM gateway** for local or hosted models
 - **Offline extractive fallback** so the project works before an LLM is configured
 - **Roadmap-first structure** so vector search, review UI, and Discord bot features can be added incrementally
@@ -150,6 +151,38 @@ The ingestor:
 - strips query strings from Discord CDN URLs so expiring signed URL parameters are not indexed.
 
 The older `ingest-discord` command still exists for intentionally curated JSONL threads.
+
+## Trusted authors and retrieval boosts
+
+Discord exports can contain a lot of casual conversation, so the repo now stores lightweight authority metadata on raw Discord chunks. By default, trusted maintainers keep their names in indexed text while normal users are pseudonymized.
+
+Configure trusted accounts in `config.yaml`:
+
+```yaml
+discord:
+  trusted_authors:
+    - aliases: ["cinepi", "CinePI"]
+      score: 2.0
+      reason: "project/account"
+    - aliases: ["schoolpost", "Schoolpost"]
+      score: 2.0
+      reason: "creator of CinePI"
+    - aliases: ["tiramisioux", "Tiramisioux"]
+      score: 2.0
+      reason: "creator of Cinemate"
+
+  trusted_roles:
+    Admin: 1.5
+    Moderator: 1.3
+
+retrieval:
+  enable_authority_rerank: true
+  authority_boost_weight: 0.15
+  pinned_boost_weight: 0.05
+  reaction_boost_weight: 0.02
+```
+
+The boost is intentionally modest. It helps maintainer, pinned, and highly reacted messages rank higher, but it should not replace review, newer official docs, or citations. Raw Discord chunks still have `review_status: raw` and should be promoted into approved knowledge items before becoming canonical docs.
 
 ## Opt-in Discord intake format
 

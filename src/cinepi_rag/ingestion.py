@@ -61,6 +61,7 @@ def ingest_discord_export(
     include_bots: bool = False,
     max_chars: int = 5000,
     max_messages: int = 40,
+    discord_config: dict[str, Any] | None = None,
 ) -> int:
     added = 0
     for export_path in discord_export_files(path):
@@ -68,7 +69,7 @@ def ingest_discord_export(
         title = export_title(data)
         metadata = export_metadata(data, export_path)
         source_id = db.add_source("discord_export_raw", default_project, title, str(export_path), metadata)
-        for chunk in chunk_discord_export(data, preserve_author_names, include_bots, max_chars, max_messages):
+        for chunk in chunk_discord_export(data, preserve_author_names, include_bots, max_chars, max_messages, discord_config):
             chunk_metadata = metadata | (chunk.metadata or {})
             db.add_chunk(source_id, chunk.title, chunk.text, chunk.heading_path, chunk_metadata)
             added += 1

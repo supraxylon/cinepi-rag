@@ -3,6 +3,13 @@ database:
 
 retrieval:
   top_k: 6
+  # Pull more initial FTS candidates before applying lightweight metadata boosts.
+  candidate_multiplier: 4
+  enable_authority_rerank: true
+  # These are modest boosts. They should improve ranking without overriding source quality.
+  authority_boost_weight: 0.15
+  pinned_boost_weight: 0.05
+  reaction_boost_weight: 0.02
 
 discord_exports:
   # Raw channel exports are useful for extraction/review, but should still be treated as source material.
@@ -12,10 +19,28 @@ discord_exports:
   max_chars: 5000
   max_messages: 40
 
+# Used by Discord export ingestion to preserve names for trusted sources and store authority metadata.
+discord:
+  preserve_author_names: false
+
+  trusted_authors:
+    - aliases: ["cinepi", "CinePI"]
+      score: 2.0
+      reason: "project/account"
+    - aliases: ["schoolpost", "Schoolpost"]
+      score: 2.0
+      reason: "creator of CinePI"
+    - aliases: ["tiramisioux", "Tiramisioux"]
+      score: 2.0
+      reason: "creator of Cinemate"
+
+  trusted_roles:
+    Admin: 1.5
+    Moderator: 1.3
+
 llm:
   # Use "offline" until Ollama, vLLM, or a hosted provider is configured.
-  #default_provider: offline
-  default_provider: Ollama
+  default_provider: ollama
 
   providers:
     offline:
@@ -25,6 +50,7 @@ llm:
     ollama:
       type: openai_compatible
       base_url: http://localhost:11434/v1
+      # Ollama does not require a real local API key, but many OpenAI-compatible clients expect this field.
       api_key: ollama
       model: qwen3:30b-a3b-instruct-2507-q4_K_M
 

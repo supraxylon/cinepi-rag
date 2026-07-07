@@ -30,8 +30,8 @@ def offline_answer(question: str, chunks: list[dict]) -> str:
     return "\n".join(lines).strip()
 
 
-def answer_question(db: Database, llm: LLMGateway, question: str, top_k: int = 6) -> str:
-    chunks = db.search(question, top_k)
+def answer_question(db: Database, llm: LLMGateway, question: str, top_k: int = 6, retrieval_config: dict | None = None) -> str:
+    chunks = db.search(question, top_k, retrieval_config)
     if not chunks:
         return "I could not find relevant indexed sources for that question."
 

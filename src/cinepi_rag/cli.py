@@ -33,8 +33,8 @@ def build_parser() -> argparse.ArgumentParser:
     discord_export.add_argument("--project", default="cinepi")
     discord_export.add_argument("--preserve-author-names", action="store_true", help="Keep all exported author names instead of pseudonymizing normal users")
     discord_export.add_argument("--include-bots", action="store_true", help="Include bot-authored messages")
-    discord_export.add_argument("--max-chars", type=int, default=5000, help="Approximate maximum characters per chunk")
-    discord_export.add_argument("--max-messages", type=int, default=40, help="Maximum messages per chunk")
+    discord_export.add_argument("--max-chars", type=int, default=None, help="Approximate maximum characters per chunk")
+    discord_export.add_argument("--max-messages", type=int, default=None, help="Maximum messages per chunk")
 
     search = sub.add_parser("search", help="Search indexed chunks")
     search.add_argument("query")
@@ -75,23 +75,26 @@ def main() -> None:
         count = ingest_discord_jsonl(db, args.path, default_project=args.project)
         print(f"Ingested {count} approved Discord chunks from {Path(args.path)}")
     elif args.command == "ingest-discord-export":
+        export_cfg = config.get("discord_exports", {})
+        discord_cfg = config.get("discord", {})
         count = ingest_discord_export(
             db,
             args.path,
-            default_project=args.project,
-            preserve_author_names=args.preserve_author_names,
-            include_bots=args.include_bots,
-            max_chars=args.max_chars,
-            max_messages=args.max_messages,
+            default_project=args.project or export_cfg.get("default_project", "cinepi"),
+            preserve_author_names=args.preserve_author_names or bool(export_cfg.get("preserve_author_names", False)) or bool(discord_cfg.get("preserve_author_names", False)),
+            include_bots=args.include_bots or bool(export_cfg.get("include_bots", False)),
+            max_chars=args.max_chars or int(export_cfg.get("max_chars", 5000)),
+            max_messages=args.max_messages or int(export_cfg.get("max_messages", 40)),
+            discord_config=discord_cfg,
         )
         print(f"Ingested {count} raw Discord export chunks from {Path(args.path)}")
     elif args.command == "search":
-        for i, result in enumerate(db.search(args.query, top_k), start=1):
+        for i, result in enumerate(db.search(args.query, top_k, config.get("retrieval", {})), start=1):
             print(f"\n[{i}] {result['title']}")
             print(f"Source: {result.get('path_or_url') or result.get('source_title')}")
             print(short(result["content"], 900))
     elif args.command == "ask":
-        print(answer_question(db, LLMGateway(config), args.question, top_k=top_k))
+        print(answer_question(db, LLMGateway(config), args.question, top_k=top_k, retrieval_config=config.get("retrieval", {})))
     elif args.command == "extract":
         items = extract_knowledge(db, LLMGateway(config), args.query, args.output, top_k=top_k)
         print(f"Wrote {len(items)} draft knowledge items to {args.output}")

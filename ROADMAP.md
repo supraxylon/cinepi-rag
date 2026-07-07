@@ -41,7 +41,8 @@ Instead of generating one giant summary document, the pipeline extracts structur
 - DiscordChatExporter-style channel JSON ingestion for raw channel exports.
 - Reply-aware Discord export chunking using `reference.messageId` when available.
 - Attachment/embed/forwarded-message normalization for Discord exports.
-- Default Discord author pseudonymization, while preserving Admin/Moderator names.
+- Default Discord author pseudonymization, while preserving trusted maintainer/Admin/Moderator names.
+- Trusted-author authority metadata and retrieval reranking for maintainers, pinned messages, and reacted messages.
 - Basic redaction for sensitive-looking values.
 - Source-aware chunking for Markdown headings and long text.
 - LLM gateway for local or hosted OpenAI-compatible providers.
@@ -267,3 +268,14 @@ Near-term repo changes still needed after this update:
 3. Add a lightweight review UI or markdown review queue.
 4. Add topic/channel-aware chunking rules, especially for `faq`, `INFORMATION`, hardware channels, and troubleshooting-heavy channels.
 5. Add duplicate/near-duplicate merging before generated docs are produced.
+
+
+## Update: trusted-author authority weighting
+
+The repo now elevates trusted Discord sources during ingestion and retrieval. Maintainers such as `cinepi`, `schoolpost`, and `Tiramisioux` can be configured in `config.yaml` with aliases, scores, and reasons. Discord export chunks now store `authority_score`, `authority_reason`, `trusted_authors`, `is_pinned`, `pinned_count`, and `reaction_count` metadata. Retrieval uses a modest rerank boost so high-quality community sources surface earlier without becoming automatically canonical.
+
+Remaining work:
+
+1. Add a review UI or CLI command to promote raw Discord chunks into approved knowledge items.
+2. Add source filtering so public bot answers can default to official/approved sources and only include raw Discord when requested.
+3. Add stale-source handling so newer official docs can override old maintainer chat messages.

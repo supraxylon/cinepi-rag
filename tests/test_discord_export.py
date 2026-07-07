@@ -63,3 +63,27 @@ def test_ingest_discord_export(tmp_path):
     results = db.search("Avahi cinepi.local", limit=3)
     assert results
     assert results[0]["source_type"] == "discord_export_raw"
+
+
+def test_trusted_author_metadata_and_name_preservation():
+    discord_config = {
+        "trusted_authors": [{"aliases": ["schoolpost", "Schoolpost"], "score": 2.0, "reason": "creator of CinePI"}],
+        "trusted_roles": {"Admin": 1.5},
+    }
+    chunks = chunk_discord_export(sample_export(), max_messages=20, discord_config=discord_config)
+    assert chunks[0].metadata["authority_score"] == 2.0
+    assert chunks[0].metadata["authority_reason"] == "creator of CinePI"
+    assert chunks[0].metadata["trusted_authors"] == ["Schoolpost"]
+    assert chunks[0].metadata["is_pinned"] is True
+    assert "Schoolpost" in chunks[0].text
+
+
+def test_authority_boost_can_rerank_results(tmp_path):
+    db = Database(tmp_path / "rag.sqlite")
+    db.init(reset=True)
+    source_id = db.add_source("test", "cinepi", "test", "memory")
+    db.add_chunk(source_id, "normal", "Avahi cinepi.local troubleshooting general note", "normal", {"authority_score": 1.0})
+    db.add_chunk(source_id, "trusted", "Avahi cinepi.local troubleshooting maintainer note", "trusted", {"authority_score": 2.0})
+    results = db.search("Avahi cinepi.local troubleshooting", limit=2, retrieval_config={"authority_boost_weight": 1.0, "pinned_boost_weight": 0.0, "reaction_boost_weight": 0.0})
+    assert results[0]["title"] == "trusted"
+    assert results[0]["authority_boost"] > 0

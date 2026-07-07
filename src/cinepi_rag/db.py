@@ -80,9 +80,11 @@ class Database:
             )
         return chunk_id
 
-    def search(self, query: str, limit: int = 6) -> list[dict[str, Any]]:
+    def search(self, query: str, limit: int = 6, retrieval_config: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         terms = [t for t in re.findall(r"[A-Za-z0-9_]+", query) if len(t) > 1]
         match_query = " OR ".join(terms[:12]) or query
+        retrieval_config = retrieval_config or {}
+        candidate_limit = max(limit, limit * int(retrieval_config.get("candidate_multiplier", 4)))
         sql = """
             SELECT c.id, c.title, c.content, c.heading_path, c.metadata_json,
                    s.source_type, s.project, s.path_or_url, s.title AS source_title,
@@ -96,7 +98,7 @@ class Database:
         """
         try:
             with self.connect() as conn:
-                rows = conn.execute(sql, (match_query, limit)).fetchall()
+                rows = conn.execute(sql, (match_query, candidate_limit)).fetchall()
         except sqlite3.OperationalError:
             like_query = f"%{query}%"
             with self.connect() as conn:
@@ -109,9 +111,27 @@ class Database:
                     WHERE c.content LIKE ? OR c.title LIKE ?
                     LIMIT ?
                     """,
-                    (like_query, like_query, limit),
+                    (like_query, like_query, candidate_limit),
                 ).fetchall()
-        return [dict(row) | {"metadata": json.loads(row["metadata_json"] or "{}")} for row in rows]
+
+        results = [dict(row) | {"metadata": json.loads(row["metadata_json"] or "{}")} for row in rows]
+        if not retrieval_config.get("enable_authority_rerank", True):
+            return results[:limit]
+
+        authority_weight = float(retrieval_config.get("authority_boost_weight", 0.15))
+        pinned_weight = float(retrieval_config.get("pinned_boost_weight", 0.05))
+        reaction_weight = float(retrieval_config.get("reaction_boost_weight", 0.02))
+        for result in results:
+            metadata = result.get("metadata", {})
+            base_score = float(result.get("score") or 0.0)
+            authority = max(float(metadata.get("authority_score", 1.0) or 1.0), 1.0)
+            pinned = 1.0 if metadata.get("is_pinned") else 0.0
+            reactions = min(float(metadata.get("reaction_count", 0) or 0), 10.0) / 10.0
+            boost = (authority - 1.0) * authority_weight + pinned * pinned_weight + reactions * reaction_weight
+            result["authority_boost"] = boost
+            result["rerank_score"] = base_score - boost
+
+        return sorted(results, key=lambda item: item.get("rerank_score", item.get("score", 0)))[:limit]
 
     def count_chunks(self) -> int:
         with self.connect() as conn:
